@@ -4,12 +4,14 @@ import queue
 from google.cloud import speech
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-
+import sys
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
 CLST_201 = os.getenv('CLST_201_ID')
+
+if not CLST_201:
+    print("ERROR: Missing env variables")
+    sys.exit(1)
 
 GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID')
 SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
@@ -23,7 +25,7 @@ speech_client = speech.SpeechClient(credentials=credentials)
 docs_service = build('docs', 'v1', credentials=credentials)
 
 # Google Docs ID
-DOCUMENT_ID = "CLST_201"
+DOCUMENT_ID = CLST_201
 
 # Audio streaming settings
 RATE = 16000
@@ -106,6 +108,45 @@ def write_to_google_doc(document_id, text):
     print("Appended to Google Docs.")
 
 
+def append_title_to_google_doc(document_id, title):
+    """Adds the title in bold at the end of the Google Doc."""
+    doc = docs_service.documents().get(documentId=document_id).execute()
+    end_index = doc.get('body').get('content')[-1].get('endIndex') - 1
+
+    requests = [
+        {
+            "insertText": {
+                "location": {
+                    "index": end_index
+                },
+                "text": title + "\n\n"
+            }
+        },
+        {
+            "updateTextStyle": {
+                "range": {
+                    "startIndex": end_index,
+                    "endIndex": end_index + len(title)
+                },
+                "textStyle": {
+                    "bold": True
+                },
+                "fields": "bold"
+            }
+        }
+    ]
+
+    docs_service.documents().batchUpdate(documentId=document_id,
+                                         body={"requests": requests}).execute()
+    print(f"Title '{title}' added to Google Docs.")
+
+
 if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python script.py 'Title of the Transcription'")
+        sys.exit(1)
+
+    title = sys.argv[1]
+    append_title_to_google_doc(DOCUMENT_ID, title)
     print("Starting real-time transcription. Speak into the microphone...")
     transcribe_streaming()

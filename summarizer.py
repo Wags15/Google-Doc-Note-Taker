@@ -20,7 +20,7 @@ def summarize_text(text):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "The following is a transcript from a university lecture. Summarize key points, dates, names, etc. that will help me study when I look back at my notes. Focus on content that could be on a test. Use point form when possible"},
+                {"role": "system", "content": "The following is a transcript from a university lecture. Summarize key points, dates, names, etc. that will help me study when I look back at my notes. Focus on content that could be on a test. Use point form when possible, but respond with only plain text. Do not bold, or format it other than the jot notes"},
                 {"role": "user", "content": text}
             ]
         )

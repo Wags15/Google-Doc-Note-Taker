@@ -1,5 +1,6 @@
 import os
 import pyaudio
+import inquirer
 import queue
 from google.cloud import speech
 from google.oauth2 import service_account
@@ -7,15 +8,17 @@ from googleapiclient.discovery import build
 import sys
 import os
 
-CLST_201 = os.getenv('CLST_201_ID')
+DOC_OPTIONS = {
+    "CLST 201": os.getenv("CLST_201_ID"),
+    "CLST 150": os.getenv("CLST_150_ID"),
+    "CISC 455": os.getenv("CISC_455_ID"),
+    "CISC 474": os.getenv("CISC_474_ID")
+}
 
-if not CLST_201:
-    print("ERROR: Missing env variables")
+# Ensure all DOC_ID environment variables are set
+if not all(DOC_OPTIONS.values()):
+    print("Error: One or more DOC_ID environment variables are missing.")
     sys.exit(1)
-
-GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID')
-SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
-STORAGE_BUCKET_NAME = os.getenv('STORAGE_BUCKET_NAME')
 
 # Set up credentials
 GOOGLE_CLOUD_CREDENTIALS = "service-key.json"
@@ -24,8 +27,14 @@ credentials = service_account.Credentials.from_service_account_file(
 speech_client = speech.SpeechClient(credentials=credentials)
 docs_service = build('docs', 'v1', credentials=credentials)
 
-# Google Docs ID
-DOCUMENT_ID = CLST_201
+# Ask user to choose a document
+questions = [
+    inquirer.List("doc_choice",
+                  message="Select a course to save the transcription",
+                  choices=list(DOC_OPTIONS.keys()))
+]
+answers = inquirer.prompt(questions)
+DOCUMENT_ID = DOC_OPTIONS[answers["doc_choice"]]
 
 # Audio streaming settings
 RATE = 16000

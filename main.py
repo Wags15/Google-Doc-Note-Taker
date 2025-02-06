@@ -7,6 +7,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import sys
 import os
+import time
+
 
 from summarizer import summarize_text
 
@@ -47,7 +49,9 @@ SUMMARY_DOCUMENT_ID = SUMMARY_DOC_OPTIONS[answers["doc_choice"]]
 
 # Audio streaming settings
 RATE = 16000
-CHUNK = int(RATE / 10)  # 100ms chunks
+CHUNK = int(RATE / 10) 
+MAX_RECORD_TIME = 3600  # **1-hour limit**
+
 
 # Queue for real-time streaming
 audio_queue = queue.Queue()
@@ -63,6 +67,9 @@ def record_callback(in_data, frame_count, time_info, status):
 
 def transcribe_streaming():
     global full_transcription  # Store transcription globally
+    start_time = time.time()  # Start timer
+    
+
 
     """Streams audio from microphone and transcribes in real-time."""
     audio_interface = pyaudio.PyAudio()
@@ -78,6 +85,12 @@ def transcribe_streaming():
     def audio_generator():
         """Yields audio chunks from the queue."""
         while True:
+            if time.time() - start_time >= MAX_RECORD_TIME:
+                print("\n1-hour limit reached. Stopping transcription...")
+                summarize_and_save()
+                stream.stop_stream()
+                stream.close()
+                sys.exit(0)  # Exit after summarization
             chunk = audio_queue.get()
             if chunk is None:
                 break

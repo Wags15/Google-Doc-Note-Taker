@@ -8,15 +8,23 @@ from googleapiclient.discovery import build
 import sys
 import os
 
+from summarizer import summarize_text
+
 DOC_OPTIONS = {
     "CLST 201": os.getenv("CLST_201_ID"),
     "CLST 150": os.getenv("CLST_150_ID"),
     "CISC 455": os.getenv("CISC_455_ID"),
     "CISC 474": os.getenv("CISC_474_ID")
 }
+SUMMARY_DOC_OPTIONS = {
+    "CLST 201": os.getenv("SUMMARY_CLST_201_ID"),
+    "CLST 150": os.getenv("SUMMARY_CLST_150_ID"),
+    "CISC 455": os.getenv("SUMMARY_CISC_455_ID"),
+    "CISC 474": os.getenv("SUMMARY_CISC_474_ID")
+}
 
 # Ensure all DOC_ID environment variables are set
-if not all(DOC_OPTIONS.values()):
+if not all(DOC_OPTIONS.values()) and not all(SUMMARY_DOC_OPTIONS.values()):
     print("Error: One or more DOC_ID environment variables are missing.")
     sys.exit(1)
 
@@ -35,6 +43,7 @@ questions = [
 ]
 answers = inquirer.prompt(questions)
 DOCUMENT_ID = DOC_OPTIONS[answers["doc_choice"]]
+SUMMARY_DOCUMENT_ID = SUMMARY_DOC_OPTIONS[answers["doc_choice"]]
 
 # Audio streaming settings
 RATE = 16000
@@ -42,6 +51,8 @@ CHUNK = int(RATE / 10)  # 100ms chunks
 
 # Queue for real-time streaming
 audio_queue = queue.Queue()
+
+full_transcription = ""  # Stores the complete transcription
 
 
 def record_callback(in_data, frame_count, time_info, status):
@@ -51,6 +62,8 @@ def record_callback(in_data, frame_count, time_info, status):
 
 
 def transcribe_streaming():
+    global full_transcription  # Store transcription globally
+
     """Streams audio from microphone and transcribes in real-time."""
     audio_interface = pyaudio.PyAudio()
     stream = audio_interface.open(
@@ -88,6 +101,7 @@ def transcribe_streaming():
         for result in response.results:
             if result.is_final:
                 transcript = result.alternatives[0].transcript
+                full_transcription += transcript + " "
                 print("Transcribed:", transcript)
                 write_to_google_doc(DOCUMENT_ID, transcript)
 
@@ -150,6 +164,47 @@ def append_title_to_google_doc(document_id, title):
     print(f"Title '{title}' added to Google Docs.")
 
 
+def summarize_and_save():
+    """Summarizes the full transcription and saves it to Google Docs."""
+    global full_transcription
+
+    summary = summarize_text(full_transcription)
+    append_summary_to_google_doc(SUMMARY_DOCUMENT_ID, summary)
+
+
+def append_summary_to_google_doc(document_id, summary):
+    """Appends the summary to the Google Doc."""
+    doc = docs_service.documents().get(documentId=document_id).execute()
+    end_index = doc.get('body').get('content')[-1].get('endIndex') - 1
+
+    requests = [
+        {
+            "insertText": {
+                "location": {
+                    "index": end_index
+                },
+                "text": summary
+            }
+        },
+        {
+            "updateTextStyle": {
+                "range": {
+                    "startIndex": end_index + 1,
+                    "endIndex": end_index + 12
+                },
+                "textStyle": {
+                    "bold": True
+                },
+                "fields": "bold"
+            }
+        }
+    ]
+
+    docs_service.documents().batchUpdate(documentId=document_id,
+                                         body={"requests": requests}).execute()
+    print("Summary appended to Google Docs.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python script.py 'Title of the Transcription'")
@@ -157,5 +212,13 @@ if __name__ == "__main__":
 
     title = sys.argv[1]
     append_title_to_google_doc(DOCUMENT_ID, title)
+    append_title_to_google_doc(SUMMARY_DOCUMENT_ID, title)
+
     print("Starting real-time transcription. Speak into the microphone...")
-    transcribe_streaming()
+
+    try:
+        transcribe_streaming()
+    except KeyboardInterrupt:
+        print("\nManual stop detected. Summarizing transcription...")
+        summarize_and_save()
+        sys.exit(0)
